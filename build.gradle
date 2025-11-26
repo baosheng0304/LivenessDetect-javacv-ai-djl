@@ -1,0 +1,46 @@
+//
+// OS: Ubuntu 184, Windows 10 20H2(19042.985)
+// Eclipse IDE for Enterprise Java and Web Developers (includes Incubating components)
+//		Version: 2021-06 (4.20.0)
+//		Build id: 20210612-2011
+//		OS: Windows 10, v.10.0, x86_64 / win32
+//		Java vendor: Oracle Corporation
+//		Java runtime version: 11.0.11+9-LTS-194
+//		Java version: 11.0.11
+// Gradle: version 7.2
+//
+// LivenessDetect-all-torch1.7.1-ubuntu18build.jar works on Win10 also
+// LivenessDetect-all-torch1.7.1-win10build.jar works on Ubuntu18 also
+
+plugins {
+    // Apply the java-library plugin to add support for Java Library
+    id 'java'
+    id "com.github.johnrengelman.shadow" version "7.0.0"
+}
+
+
+repositories {
+    // Use jcenter for resolving dependencies.
+    // You can declare any Maven/Ivy/file repository here.
+    jcenter()
+    mavenCentral()
+}
+
+dependencies {
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.13.3"
+    // ai.djl.pytorch:pytorch-native-cpu:1.8.1 not work under 
+    //		com.github.johnrengelman.shadow plugin(class cast runtime error
+    //implementation "ai.djl.pytorch:pytorch-model-zoo:0.11.0"
+    implementation "ai.djl.pytorch:pytorch-engine:0.10.0"
+    implementation "ai.djl.pytorch:pytorch-native-cpu:1.7.1"
+	implementation 'org.bytedeco:javacv-platform:1.5.5'
+}
+
+shadowJar {
+	manifest {
+		attributes 'Main-Class': 'LivenessDetect.App'
+	}
+	//transform(com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer)
+	//exclude "**/Log4j2Plugins.dat"
+}
+
