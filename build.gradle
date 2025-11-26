@@ -16,18 +16,19 @@ plugins {
     // Apply the java-library plugin to add support for Java Library
     id 'java'
     id "com.github.johnrengelman.shadow" version "7.0.0"
+    id 'project-report'
 }
-
 
 repositories {
     // Use jcenter for resolving dependencies.
     // You can declare any Maven/Ivy/file repository here.
+    //mavenCentral()
     jcenter()
-    mavenCentral()
 }
 
 dependencies {
-    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.13.3"
+    //implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.13.3"
+    testImplementation 'org.slf4j:slf4j-simple:1.7.25'
     // ai.djl.pytorch:pytorch-native-cpu:1.8.1 not work under 
     //		com.github.johnrengelman.shadow plugin(class cast runtime error
     //implementation "ai.djl.pytorch:pytorch-model-zoo:0.11.0"

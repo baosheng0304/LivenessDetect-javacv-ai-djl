@@ -8,9 +8,12 @@ import static org.bytedeco.opencv.global.opencv_dnn.blobFromImage;
 import static org.bytedeco.opencv.global.opencv_dnn.readNetFromCaffe;
 import static org.bytedeco.opencv.global.opencv_imgproc.rectangle;
 import static org.bytedeco.opencv.global.opencv_imgproc.resize;
+import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
+
 import org.bytedeco.javacpp.indexer.FloatIndexer;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.bytedeco.opencv.opencv_core.Point;
+import org.bytedeco.opencv.opencv_core.Range;
 import org.bytedeco.opencv.opencv_core.Rect;
 import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Size;
@@ -147,6 +150,16 @@ public class FaceDetector {
         return new faceBox(left_x, top_y, right_x, bottom_y);
     }
 
+    public faceBox expand_box(faceBox box, int off_x_left, int off_x_right, int off_y_top,int off_y_bottom)
+    {
+        // """Move the box to direction specified by vector offset"""
+        int left_x = box.x_left - off_x_left;
+        int top_y = box.y_top - off_y_top;
+        int right_x = box.x_right + off_x_right;
+        int bottom_y = box.y_bottom + off_y_bottom;
+        return new faceBox(left_x, top_y, right_x, bottom_y);
+    }
+    
     public faceBox get_square_box(faceBox box)
     {
     	// """Get a square box out of the given box, by expanding it."""
@@ -182,8 +195,8 @@ public class FaceDetector {
         assert((right_x - left_x) == (bottom_y - top_y));
         return new faceBox(left_x, top_y, right_x, bottom_y);
     }
-        
 
+	
 	public faceBox extract_cnn_facebox(Mat image, float threshold, boolean bDraw)
 	{
 		// Extract face area from image.
@@ -202,11 +215,64 @@ public class FaceDetector {
                 	Point pt2 = new Point(facebox.x_right, facebox.y_bottom);
                 	rectangle(image, new Rect(pt1, pt2), new Scalar(0, 255, 0, 0));
                 }
-
                 return facebox;
             }
 		}
         return null;
+	}
+	
+	public Mat extract_facebox_area(Mat image, float threshold, boolean bDraw)
+	{
+		// Extract face area from image.
+		ArrayList<faceBox> raw_boxes = getFaceBoxes(image, threshold, bDraw);
+		for (int i=0; i< raw_boxes.size(); i++ ) {
+			// Move box down.
+			faceBox box = raw_boxes.get(i);
+			int height = box.y_bottom - box.y_top;
+            int off_x_left = (int) Math.abs(height * 0.45f);
+            int off_x_right = (int) Math.abs(height * 0.45f);
+            int off_y_top = (int) Math.abs(height * 0.3f);
+            int off_y_bottom = (int) Math.abs(height * 0.6f);
+            faceBox box_expanded = expand_box(box, off_x_left, off_x_right, off_y_top, off_y_bottom);
+            // Make box square.
+            faceBox facebox = get_square_box(box_expanded);
+            if (box_in_image(facebox, image)) {
+                if (bDraw) {
+                	Point pt1 = new Point(facebox.x_left, facebox.y_top);
+                	Point pt2 = new Point(facebox.x_right, facebox.y_bottom);
+                	rectangle(image, new Rect(pt1, pt2), new Scalar(0, 255, 0, 0));
+                }
+                Mat res = image.apply(new Range(facebox.y_top, facebox.y_bottom), 
+                						new Range(facebox.x_left, facebox.x_right));
+                return res;
+            }else {
+            	Mat res = getFilledSubImage(image, facebox);
+            	return res;
+            }
+		}
+        return null;
+	}
+	// truncated sub image (face image) which is filled with zero at margin
+	public Mat getFilledSubImage(Mat image, faceBox facebox) 
+	{
+        int rows = image.rows();
+        int cols = image.cols();
+        int left = facebox.x_left >= 0 ? facebox.x_left : 0;
+        int right = facebox.x_right <= cols ? facebox.x_right : cols;
+        int top = facebox.y_top >= 0 ? facebox.y_top : 0;
+        int bottom = facebox.y_bottom <= rows ? facebox.y_bottom : rows;
+        Mat truncated = image.apply(new Range(top, bottom), new Range(left, right));
+        int box_width = facebox.x_right - facebox.x_left;
+        int box_height = facebox.y_bottom - facebox.y_top;
+        Mat res = new Mat(box_width, box_height, image.type());
+        
+        int colStart = facebox.x_left < 0 ? -facebox.x_left : 0;
+        int colEnd = facebox.x_right > cols ? box_width - (facebox.x_right - cols) : box_width;
+        int rowStart = facebox.y_top < 0 ? -facebox.y_top : 0;
+        int rowEnd = facebox.y_bottom > rows ? box_height - (facebox.y_bottom - rows) : box_height;
+        truncated.copyTo(res.apply(new Range(rowStart, rowEnd), new Range(colStart, colEnd)));
+//        imwrite("d:/face_image.png", res);
+        return res;
 	}
 	
 	public faceBox extract_facebox(Mat image, float threshold, boolean bDraw)

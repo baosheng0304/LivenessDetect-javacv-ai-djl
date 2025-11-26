@@ -31,7 +31,7 @@ public class LivenessDetector {
     	this.modelDir = modelDir;
     }
     
-	public boolean init() 
+    public boolean init() 
 	{
     	// https://github.com/deepjavalibrary/djl/issues/147
     	// http://docs.djl.ai/docs/load_model.html#implement-your-own-repository
@@ -64,10 +64,10 @@ public class LivenessDetector {
 					NDManager manager = ctx.getNDManager();
 					NDArray imageND1 = input.toNDArray(manager);
 					NDArray imageND2 = NDImageUtils.resize(imageND1, 480, 480);
-					NDArray imageND3 = imageND2.transpose(2, 0, 1).flip(0); // HWC -> CHW BGR -> RGB
+					NDArray imageND3 = imageND2.transpose(2, 0, 1).flip(0); // HWC->CHW BGR->RGB
 					NDArray imageND4 = NDImageUtils.normalize(imageND3,
-							new float[] {104f, 117f, 123f}, 
-							new float[] {57f, 57f, 58f});
+							new float[] {117f, 123f, 104f}, // BGR<->RGB exchanged?
+							new float[] {57f, 58f, 57f});	// BGR<->RGB exchanged?
 					return new NDList(imageND4);
 				}
 

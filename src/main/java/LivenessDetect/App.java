@@ -6,6 +6,7 @@ import ai.djl.modality.cv.Image;
 import static org.bytedeco.opencv.global.opencv_core.*;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imread;
+import static org.bytedeco.opencv.global.opencv_imgcodecs.imwrite;
 
 import org.bytedeco.javacv.CanvasFrame;
 import org.bytedeco.javacv.FFmpegFrameGrabber;
@@ -34,10 +35,9 @@ public class App {
 	private static String modelDir;
 	private static String option;
 	private static String inputPath;
-    private static volatile Frame[] tempVideoFrame = new Frame[1];
-    private static volatile Mat[] mRgbFrames = new Mat[1];
     private static volatile boolean mStop = false;
     
+    private static Frame tempVideoFrame;
 	private static Mat mRgbFrame = new Mat();
 	private static Mat mMaskImg = new Mat();
 	private static Mat mCroppedRgb = new Mat();
@@ -45,6 +45,10 @@ public class App {
 	private static Mat mBluredGray = new Mat();
 	private static Mat mCroppedMat = new Mat();
 	private static int mPreviewSize = 0;
+	private static int mPreviewWidth = 0;
+	private static int mPreviewHeight= 0;
+//	private static int mLandscapeWidth = 1024; // 1024x576
+	private static int mLandscapeWidth = 800;  // 800x450
 	
 	static int mEllipseCenterX, mEllipseCenterY, mEllipseSizeX, mEllipseSizeY;
 	
@@ -112,7 +116,16 @@ public class App {
 				int deviceNum = Integer.parseInt(inputPath);
 				DetectLivenessFromCameraFfmpeg(deviceNum);
 			}else {
-				DetectLivenessFromVideoFfmpeg(inputPath);
+				boolean liveness = DetectLivenessFromVideoFfmpeg(inputPath);
+				if (liveness)
+				{
+					System.out.println("====== Result ======");
+					System.out.println("Real!");
+				}
+				else {
+					System.out.println("====== Result ======");
+					System.out.println("Fake!");
+				}
 			}
 		}
 	}
@@ -523,7 +536,7 @@ public class App {
 		grabber.release();
 	}
 	
-	private static void DetectLivenessFromVideoFfmpeg(String videoPath) throws IOException
+	private static void DetectLivenessFromVideoFfmpeg0(String videoPath) throws IOException
 	{
 		File f = new File(videoPath);
 		if (!f.exists()) {
@@ -550,9 +563,9 @@ public class App {
 		int previewWidth =480, previewHeight =480;
 		try {
 			VIDEO_GRABBER.start();
-			tempVideoFrame[0] = VIDEO_GRABBER.grabImage();
-			if (tempVideoFrame[0] != null) {
-				sample_frame = toJavaCvMat.convert(tempVideoFrame[0]);
+			tempVideoFrame = VIDEO_GRABBER.grabImage();
+			if (tempVideoFrame != null) {
+				sample_frame = toJavaCvMat.convert(tempVideoFrame);
 				previewWidth = sample_frame.cols(); 
 				previewHeight = sample_frame.rows();
 			}
@@ -561,6 +574,8 @@ public class App {
 			VIDEO_GRABBER.release();
 		} catch (FrameGrabber.Exception e) {
 			e.printStackTrace();
+			VIDEO_GRABBER.stop();
+			VIDEO_GRABBER.release();
 			VIDEO_GRABBER.close();
 			return;
 		} 
@@ -569,7 +584,7 @@ public class App {
 		mainframe.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
 		mainframe.setLocationRelativeTo(null);
 		mainframe.setVisible(true);
-
+		
 		if (previewHeight > previewWidth){
 			mPreviewSize = previewWidth;
 		}else{
@@ -589,26 +604,27 @@ public class App {
 		mEllipseSizeX = (int) (mPreviewSize * 0.225);
 		mEllipseSizeY = (int) (mEllipseSizeX * 1.285);
 		
+		boolean bLiveness = true;
 		VIDEO_GRABBER.start();
 		while (!mStop && mainframe.isVisible()) {
-			tempVideoFrame[0] = VIDEO_GRABBER.grabImage();
-		    if (tempVideoFrame[0] == null) {
+			tempVideoFrame = VIDEO_GRABBER.grabImage();
+		    if (tempVideoFrame == null) {
 		      stop();
 		      break;
 		    }
-		    mRgbFrames[0] = new OpenCVFrameConverter.ToMat().convert(tempVideoFrame[0]);
-		    if (mRgbFrames[0] == null) {
+		    mRgbFrame = new OpenCVFrameConverter.ToMat().convert(tempVideoFrame);
+		    if (mRgbFrame == null) {
 		      continue;
 		    }
 			// crop the frame as square one
 			if (previewHeight > previewWidth){
 				int delta = previewHeight - previewWidth;
 				Rect rt0 = new Rect(0, delta/2, previewWidth, previewWidth);
-				mCroppedRgb = new Mat(mRgbFrames[0], rt0);
+				mCroppedRgb = new Mat(mRgbFrame, rt0);
 			}else{
 				int delta = previewWidth - previewHeight;
 				Rect rt0 = new Rect(delta/2, 0, previewHeight, previewHeight);
-				mCroppedRgb = new Mat(mRgbFrames[0], rt0);
+				mCroppedRgb = new Mat(mRgbFrame, rt0);
 			}
 			// copy mCroppedRgb to mCroppedMat for liveness detection
 			mCroppedRgb.copyTo(mCroppedMat);
@@ -656,6 +672,9 @@ public class App {
 				Thread.sleep(30);
 			} catch (InterruptedException ex) {
 				System.out.println(ex.getMessage());
+				VIDEO_GRABBER.stop();
+				VIDEO_GRABBER.release();
+				VIDEO_GRABBER.close();
 			}
 			//mCroppedRgb.release();
 		}//while (!mStop && mainframe.isVisible()) 
@@ -663,6 +682,115 @@ public class App {
 		VIDEO_GRABBER.release();
 		VIDEO_GRABBER.close();
 		mainframe.setVisible(false);
+	}
+	
+	private static boolean DetectLivenessFromVideoFfmpeg(String videoPath) throws IOException
+	{
+		File f = new File(videoPath);
+		if (!f.exists()) {
+			System.out.println("Invalid video file, check if it exists.. " + videoPath);
+			logger.debug("Invalid video file, check if it exists.. " + videoPath);
+			return false;
+		}
+		if(f.isDirectory()) { 
+			System.out.println("Please specify full path of video file, not directory, " + videoPath);
+			logger.debug("Please specify full path of video file, not directory, " + videoPath);
+			return false;
+		}
+		
+		FFmpegFrameGrabber VIDEO_GRABBER = new FFmpegFrameGrabber(videoPath);
+		Mat sample_frame;
+		int previewWidth = 1024, previewHeight = 576;
+		try {
+			VIDEO_GRABBER.start();
+			tempVideoFrame = VIDEO_GRABBER.grabImage();
+			if (tempVideoFrame != null) {
+				sample_frame = toJavaCvMat.convert(tempVideoFrame);
+				previewWidth = sample_frame.cols(); 
+				previewHeight = sample_frame.rows();
+			}
+
+			VIDEO_GRABBER.stop();
+			VIDEO_GRABBER.release();
+		} catch (FrameGrabber.Exception e) {
+			e.printStackTrace();
+			VIDEO_GRABBER.stop();
+			VIDEO_GRABBER.release();
+			VIDEO_GRABBER.close();
+			return false;
+		} 
+
+//		CanvasFrame mainframe = new CanvasFrame("Face Detection", CanvasFrame.getDefaultGamma() / 2.2);
+//		mainframe.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
+//		mainframe.setLocationRelativeTo(null);
+//		mainframe.setVisible(true);
+		boolean bMustResize = false;
+		if (previewHeight > previewWidth){
+			// portrait video
+			if (previewHeight > mLandscapeWidth) {
+				bMustResize = true;
+				mPreviewHeight = mLandscapeWidth;
+				mPreviewWidth = (int)((float)mPreviewHeight * (float)previewWidth / (float)previewHeight) ;
+			}else {
+				mPreviewHeight = previewHeight;
+				mPreviewWidth = previewWidth;
+			}
+		}else{
+			// landscape video
+			if (previewWidth > mLandscapeWidth) {
+				bMustResize = true;
+				mPreviewWidth = mLandscapeWidth;
+				mPreviewHeight = (int)((float)mPreviewWidth * (float)previewHeight / (float) previewWidth) ;
+			}else {
+				mPreviewHeight = previewHeight;
+				mPreviewWidth = previewWidth;
+			}
+		}
+//		mainframe.setCanvasSize(mLandscapeWidth / 2, mLandscapeWidth / 2);
+		mCroppedRgb = new Mat(mPreviewWidth, mPreviewHeight);
+		VIDEO_GRABBER.start();
+//		while (!mStop && mainframe.isVisible()) {
+		while (!mStop) {
+			tempVideoFrame = VIDEO_GRABBER.grabImage();
+		    if (tempVideoFrame == null) {
+		      stop();
+		      break;
+		    }
+		    mRgbFrame = new OpenCVFrameConverter.ToMat().convert(tempVideoFrame);
+		    if (mRgbFrame == null) {
+		      continue;
+		    }
+//		    if (bMustResize) {
+//				resize(mRgbFrame, mCroppedRgb, new Size(mPreviewWidth, mPreviewHeight));
+//		    }else {
+//		    	mRgbFrame.copyTo(mCroppedRgb);
+//		    }
+			Mat face_image = faceDetector.extract_facebox_area(mRgbFrame, 0.89f, false);
+//			String resultString;
+			if (face_image ==null) {
+				return false;
+			}else {
+				boolean liveness = DetectLivenessFromFrame(face_image);
+//				if (!liveness)
+//					return false;
+			}
+//			mainframe.showImage(converter.convert(face_image));
+			try {
+				Thread.sleep(30);
+			} catch (InterruptedException ex) {
+				System.out.println(ex.getMessage());
+				VIDEO_GRABBER.stop();
+				VIDEO_GRABBER.release();
+				VIDEO_GRABBER.close();
+				return false;
+			}
+			//mCroppedRgb.release();
+		}//while (!mStop && mainframe.isVisible()) 
+		VIDEO_GRABBER.stop();
+		VIDEO_GRABBER.release();
+		VIDEO_GRABBER.close();
+//		mainframe.setVisible(false);
+		return true;
 	}
 	
 	private static boolean checkfit(faceBox box) {
