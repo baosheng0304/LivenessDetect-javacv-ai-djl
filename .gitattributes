@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+model/LivenessDetect-all-torch1.7.1-ubuntu18build.jar filter=lfs diff=lfs merge=lfs -text
+model/LivenessDetect-all-torch1.7.1-win10build.jar filter=lfs diff=lfs merge=lfs -text
